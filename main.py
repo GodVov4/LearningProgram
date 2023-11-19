@@ -62,27 +62,27 @@ class LearningServer(BaseHTTPRequestHandler):
             self.wfile.write(file.read())
 
 
-def save_form(data):
+def save_form(data, db):
     parse_data = urllib.parse.unquote_plus(data.decode()).replace('\r\n', '\n')
     try:
         parse_dict = {key: value for key, value in [el.split('=', 1) for el in parse_data.split('&', 1)]}
-        with open('storage/data.json', 'r', encoding='utf-8') as file:
+        with open(db, 'r', encoding='utf-8') as file:
             load_dict = json.load(file)
             load_dict[datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')] = parse_dict
-        with open('storage/data.json', 'w', encoding='utf-8') as file:
+        with open(db, 'w', encoding='utf-8') as file:
             json.dump(load_dict, file, ensure_ascii=False, indent=4)
     except (ValueError, OSError) as err:
         logging.error(err)
 
 
-def run_socket(host, port):
+def run_socket(host, port, db):
     socket_server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     socket_server.bind((host, port))
     logging.info('Starting socket server')
     try:
         while True:
             data, *_ = socket_server.recvfrom(BUFFER_SIZE)
-            save_form(data)
+            save_form(data, db)
     finally:
         socket_server.close()
 
@@ -96,13 +96,18 @@ def run_server(host, port):
         httpserver.server_close()
 
 
-if __name__ == '__main__':
+def main():
     logging.basicConfig(level=logging.DEBUG, format='%(threadName)s: %(message)s')
-    db = pathlib.Path('storage/data.json')
+    db = pathlib.Path(__file__).joinpath('storage/data.json')
     db.parent.mkdir(exist_ok=True)
-    with open(db, 'a') as fh:
-        json.dump({}, fh)
+    if not db.exists() or not db.stat().st_size:
+        with open(db, 'w', encoding='utf-8') as fh:
+            json.dump({}, fh)
     server_http = Thread(target=run_server, args=(HTTP_HOST, HTTP_PORT))
     server_http.start()
-    server_socket = Thread(target=run_socket, args=(SOCKET_HOST, SOCKET_PORT))
+    server_socket = Thread(target=run_socket, args=(SOCKET_HOST, SOCKET_PORT, db))
     server_socket.start()
+
+
+if __name__ == '__main__':
+    main()
